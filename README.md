@@ -196,14 +196,16 @@ the response, push backgrounded with retry so a slow network doesn't make
 into the live working tree when a human is driving it — that's unaffected
 by this service existing.
 
-**Open question, not yet settled:** the interactive skill's own convention
-is one commit per artifact (clipping, then note, as two separate commits).
-Whether `save` should preserve that as two commits, or bundle both into one
-atomic commit now that a single `save` call is the unit of work, needs a
-decision before implementation — see Open Questions below.
+**Resolved:** one commit per `save` call, covering both the clipping and
+the note. The interactive skill's own convention (one commit per artifact —
+clipping, then note, as two separate commits) exists because a human drives
+that flow one file at a time and might reasonably stop between them. Here,
+`save` is a single atomic unit of work with a single caller decision behind
+it ("this operation is good, write it") — splitting that into two commits
+would only create a window where the clipping exists without the note it
+was captured for, with no benefit to match.
 
-## Decision 6 — ghost-audit runs by calling the existing preset, not by
-reimplementing it
+## Decision 6 — ghost-audit runs by calling the existing preset, not by reimplementing it
 
 `compose` calls `vox-intelligence`'s already-shipped
 `POST /presets/scholion/ghost-audit` endpoint against the drafted note,
@@ -271,6 +273,29 @@ this API did it.
 | `operation_already_saved` | That operation was already consumed | `false` |
 | `forbidden` | ACL denied the operation for this principal | `false` |
 
+## Decision 8 — `save` takes no content, only an `operationId`
+
+`save` does not accept `edits` (title/summary/tags/body overrides). The
+audit verdict `compose` returns is computed against one specific text; if
+`save` could rewrite that text on the way out, the stored verdict would
+stop describing what actually gets committed — an edit could reintroduce a
+violation (drop a source, add an aphoristic closer) and it would sail
+through under a `green` that no longer applies to it. That is a real
+audit-bypass path, distinct from — and unintentional, unlike —
+`webclip.save.force`.
+
+The alternative (re-auditing the edited text before allowing save) was
+considered and rejected for now: it adds a second LLM round-trip to a path
+that's supposed to be cheap, for a case (touching up a draft) that a fresh
+`compose` call already covers at the same cost. **If the draft needs a
+change — a different title, a related note to link, anything — call
+`compose` again.** It's cheap, it always returns a freshly audited
+`operationId`, and the stale one simply expires unused. This also settles
+where `relatedNotes` belongs: only as `compose` input, never patched onto
+an existing operation. Wanting to add links after seeing an initial draft
+just means calling `compose` again with `relatedNotes` filled in — no
+separate patch endpoint needed.
+
 ## Endpoints (draft)
 
 ```
@@ -282,25 +307,14 @@ POST /webclip/compose                     {url} or {text,title,url,domain}, rela
 
 GET  /webclip/{operationId}               poll a pending operation
 
-POST /webclip/{operationId}/save          { edits?: {title?, summary?, tags?, body?}, force?: boolean }
-  → { slug, notePath, clippingPath, commits: [...] }
+POST /webclip/{operationId}/save          { force?: boolean }
+  → { slug, notePath, clippingPath, commit: {...} }
 
 DELETE /webclip/{operationId}             discard explicitly (optional; also expires on its own)
 ```
 
-## Open questions (resolve before implementation)
+## Deployment
 
-1. **Commit granularity on `save`.** Two commits (clipping, then note —
-   matching the interactive skill's existing convention) or one atomic
-   commit for both, now that `save` is a single unit of work?
-2. **`edits` on `save`.** Should the caller be able to hand-edit the
-   composed note (title/summary/tags/body) at save time, and does an edited
-   body need to be re-audited before it's allowed to save, or does editing
-   forfeit the green/yellow verdict earned by the original draft?
-3. **`relatedNotes` timing.** Can they be supplied only at `compose` time
-   (today's design), or also patched in before `save` once a human has had
-   a chance to do the search-first step interactively against the
-   already-composed draft?
-4. Confirm the production deployment path (same HermesTools host as
-   `vox-intelligence`/`scholion-places`, same reverse-proxy-stamps-the-key
-   pattern) before writing the systemd unit.
+Same HermesTools host as `vox-intelligence` and `scholion-places`, same
+reverse-proxy-stamps-the-`X-Api-Key` pattern, before writing the systemd
+unit — not yet done.
