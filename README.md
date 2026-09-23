@@ -296,7 +296,43 @@ an existing operation. Wanting to add links after seeing an initial draft
 just means calling `compose` again with `relatedNotes` filled in — no
 separate patch endpoint needed.
 
-## What `save` writes
+## Decision 9 — `save` can commit itself, or hand the content back for the caller to commit
+
+Default behavior (`mode: "commit"`, the implicit default) is what's
+documented below: the service writes into its own `vault/`, commits, and
+pushes. That's right for a single, one-off save — the interactive skill
+calling this API for one webclip, or `Claudinho` doing the same.
+
+It's wrong for batch processing. The existing backlog-import playbook
+(`add-scholion-webclip/batch-playbook.md`) already deliberately avoids a
+commit per note — dozens or hundreds of webclips landing as individual
+commits was already called "indecent" for the repo's history, so that
+playbook has the orchestrator accumulate everything a batch of subagents
+produced and commit once, on a timer, for the whole window. A `save` that
+always commits immediately would force that same choice back onto every
+caller doing batch work: either call this API and get the commit flood
+back, or bypass it and reimplement extraction by hand again — defeating
+the point of building this service at all.
+
+`mode: "return"` is the other option: `save` still validates the operation
+and still enforces the same audit gate (verdict must be green/yellow, or
+the caller needs `webclip.save.force` for red — identical authorization
+either way, only the persistence mechanism changes). But instead of writing
+into its own `vault/` and committing, it hands back the two fully-assembled
+file bodies as strings — the same content `mode: "commit"` would have
+written, already through frontmatter assembly, slug/date/sources
+resolution, everything. Nothing touches git. The caller decides where and
+when those two files actually land: an orchestrator collecting many
+`mode: "return"` saves across a batch window and committing them together
+in its own checkout, or the interactive skill writing them straight into
+the human's live `E:\scholion` working tree for one last look before a
+commit the human runs themselves.
+
+The operation is consumed in both modes — the decision "this is good,
+finalize it" was already made either way; `mode` only changes who performs
+the write.
+
+## What `save` writes (`mode: "commit"`)
 
 Two files, one commit:
 
@@ -326,8 +362,11 @@ domain: "<domain, no www.>"
 **Note** (`content/notes/`) — the fields `compose` returned
 (`title`/`summary`/`tags`/`body`/`language`), plus `category: webclip`,
 `has_commentary: false`, and a `sources` block with two entries: the
-original URL and the archived-clipping link, which only resolves once this
-same `save` call's commit is pushed:
+original URL and the archived-clipping link. That link is built from the
+fixed path convention regardless of `mode` (see Decision 9) — it resolves
+once whoever ends up committing the clipping actually pushes it, whether
+that's this same call (`mode: "commit"`) or a later one done by the caller
+(`mode: "return"`):
 
 ```yaml
 ---
@@ -364,8 +403,9 @@ POST /webclip/compose                     {url} or {text,title,url,domain}, rela
 
 GET  /webclip/{operationId}               poll a pending operation
 
-POST /webclip/{operationId}/save          { force?: boolean }
-  → { slug, notePath, clippingPath, commit: {...} }
+POST /webclip/{operationId}/save          { mode?: "commit" | "return", force?: boolean }
+  → mode "commit" (default): { slug, notePath, clippingPath, commit: {...} }
+  → mode "return":            { slug, notePath, clippingPath, clippingContent, noteContent, commit: null }
 
 DELETE /webclip/{operationId}             discard explicitly (optional; also expires on its own)
 ```
