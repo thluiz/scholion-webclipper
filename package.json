@@ -1,0 +1,10 @@
+{
+  "name": "scholion-webclipper",
+  "version": "0.1.0",
+  "description": "Fetch, extract and compose Scholion webclip notes behind an authorized, auditable HTTP API.",
+  "type": "module",
+  "scripts": {
+    "start": "bun run server.ts",
+    "test": "bun test"
+  }
+}
