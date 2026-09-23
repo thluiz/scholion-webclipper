@@ -296,6 +296,63 @@ an existing operation. Wanting to add links after seeing an initial draft
 just means calling `compose` again with `relatedNotes` filled in — no
 separate patch endpoint needed.
 
+## What `save` writes
+
+Two files, one commit:
+
+```
+clippings/<YYYY-MM>/<domain>--<slug>.md      the raw capture, verbatim
+content/notes/<slug>.md                       the composed webclip note
+```
+
+`<YYYY-MM>` is the month `compose` ran, not `save` time — a `compose` that
+sits near its TTL and gets saved the next day still files under the month
+it was actually captured. `<domain>` is the host with `www.` stripped and
+dots turned into hyphens (`martinfowler.com` → `martinfowler-com`), same
+convention the interactive skill already uses.
+
+**Clipping** (`clippings/`) — frontmatter only, body is the extracted
+Markdown verbatim:
+
+```yaml
+---
+url: "<original url>"
+captured_at: "<compose timestamp, ISO with offset>"
+title: "<captured title>"
+domain: "<domain, no www.>"
+---
+```
+
+**Note** (`content/notes/`) — the fields `compose` returned
+(`title`/`summary`/`tags`/`body`/`language`), plus `category: webclip`,
+`has_commentary: false`, and a `sources` block with two entries: the
+original URL and the archived-clipping link, which only resolves once this
+same `save` call's commit is pushed:
+
+```yaml
+---
+title: "<from compose>"
+date: "<compose timestamp>"
+category: webclip
+summary: "<from compose>"
+tags: [<from compose>]
+has_commentary: false
+sources:
+  - title: "<page title>"
+    url: "<original url>"
+    kind: article   # inferred from domain, same table the interactive skill uses
+  - title: "Raw clipping (archived copy)"
+    url: "https://github.com/thluiz/scholion/blob/main/clippings/<YYYY-MM>/<file>.md"
+    kind: repo
+---
+<body, from compose>
+```
+
+Both files land in the same commit precisely because of that
+archived-copy link: a note that references a clipping which isn't in the
+same commit (or an earlier one) would point at a 404 for however long the
+gap lasted. One commit means the link is never dangling even for a moment.
+
 ## Endpoints (draft)
 
 ```
