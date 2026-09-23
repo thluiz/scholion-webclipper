@@ -1,0 +1,17 @@
+# Secrets and per-deployment configuration — never committed.
+# This repository is public; keep it that way by keeping these out.
+.env
+acl.json
+
+# The working clone of the content repository. Large, and not ours to version.
+vault/
+
+# Pending compose→save operations. Ephemeral by design (TTL-based), and
+# holds drafted note content that hasn't been reviewed yet.
+operations/
+
+# Runtime
+logs/
+node_modules/
+bun.lockb
+*.log

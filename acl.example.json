@@ -1,0 +1,45 @@
+{
+  "_comment": [
+    "Copy to acl.json (gitignored, chmod 600) and edit. The values below are examples.",
+    "",
+    "A principal is a person or a bot's deployment slot — the audit log records",
+    "the name a key resolves to, not who is holding it at the API layer.",
+    "",
+    "apiKey: never share one between two consumers. Generate with:",
+    "  openssl rand -hex 24",
+    "",
+    "role: read | write | admin.",
+    "  read  — GET /webclip/{id} only: poll a pending operation.",
+    "  write — everything above, plus webclip.compose, webclip.save and",
+    "          webclip.discard. Deliberately stops short of forcing a save",
+    "          past a red ghost-audit verdict — see webclip.save.force below.",
+    "  admin — everything, including webclip.save.force.",
+    "",
+    "allow / deny: adjust the role for one principal. deny wins over allow.",
+    "A denied operation is left out of what GET /me reports, so a client",
+    "built from that list never learns it exists.",
+    "",
+    "The operation names are the ones in acl.ts. A name that matches none of",
+    "them is warned about at boot — a typo in a deny list looks like a",
+    "control and is none."
+  ],
+
+  "principals": {
+    "thiago": {
+      "apiKey": "replace-me-with-48-hex-characters-from-openssl",
+      "role": "admin"
+    },
+
+    "claudinho": {
+      "_comment": "OpenClaw's autonomous agent. Can compose and save, but can never self-authorize past a red ghost-audit verdict — that needs a principal with webclip.save.force.",
+      "apiKey": "replace-me-too-with-another-random-value",
+      "role": "write"
+    },
+
+    "add-scholion-webclip-skill": {
+      "_comment": "The interactive Claude Code skill, when it calls this API instead of doing extraction/composition inline.",
+      "apiKey": "replace-me-as-well",
+      "role": "write"
+    }
+  }
+}
