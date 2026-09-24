@@ -105,12 +105,25 @@ async function renderAndExtract(
   options: ExtractOptions,
   onLaunched: (browser: Browser) => void,
 ): Promise<ExtractResult> {
+  // Step timings go to stdout (journald) so a render that hits the hard cap
+  // shows which await it was stuck in.
+  const t0 = Date.now();
+  let step = "launch";
+  const mark = (next: string) => {
+    step = next;
+  };
+  const stuck = setTimeout(
+    () => console.log(`[extract] still in "${step}" after ${options.timeoutMs}ms: ${url}`),
+    options.timeoutMs + 1000,
+  );
   const browser = await chromium.launch({ timeout: options.timeoutMs });
   onLaunched(browser);
   let consentWallSeen = false;
 
   try {
+    mark("newPage");
     const page = await browser.newPage();
+    mark("goto");
 
     try {
       await page.goto(url, { waitUntil: "networkidle", timeout: options.timeoutMs });
@@ -133,12 +146,15 @@ async function renderAndExtract(
       // reflects which one.
     }
 
+    mark("title");
     const pageTitle = await page.title();
     if (CHALLENGE_TITLE_PATTERN.test(pageTitle)) {
       throw new BlockedDomainError(new URL(url).hostname);
     }
 
+    mark("content");
     const html = await page.content();
+    mark("extract");
     const { title, markdown } = extractFromHtml(html, url, pageTitle);
 
     const chars = markdown.trim().length;
@@ -149,7 +165,11 @@ async function renderAndExtract(
 
     return { title, markdown };
   } finally {
+    mark("close");
     await browser.close();
+    clearTimeout(stuck);
+    const ms = Date.now() - t0;
+    if (ms > options.timeoutMs) console.log(`[extract] slow render ${ms}ms: ${url}`);
   }
 }
 
