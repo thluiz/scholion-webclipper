@@ -308,6 +308,11 @@ an existing operation. Wanting to add links after seeing an initial draft
 just means calling `compose` again with `relatedNotes` filled in — no
 separate patch endpoint needed.
 
+`capturedAt` (optional, any mode) overrides the default "now" timestamp —
+for the interactive skill's file mode, reprocessing a clipping that was
+already captured earlier and must keep its original `captured_at` and
+`<YYYY-MM>` folder rather than today's.
+
 ## Decision 9 — `save` can commit itself, or hand the content back for the caller to commit
 
 Default behavior (`mode: "commit"`, the implicit default) is what's
@@ -410,7 +415,7 @@ gap lasted. One commit means the link is never dangling even for a moment.
 GET  /health                              no key required
 GET  /me                                  what your key may do
 
-POST /webclip/compose                     {url} or {text,title,url,domain}, relatedNotes?
+POST /webclip/compose                     {url} or {text,title,url,domain}, relatedNotes?, capturedAt?
   → { operationId, clipping, note, audit: {verdict, findings, summary}, expiresAt }
 
 GET  /webclip/{operationId}               poll a pending operation

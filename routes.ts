@@ -72,7 +72,7 @@ async function handleCompose(ctx: ApiContext, request: ApiRequest): Promise<ApiR
       url: requiredString(req.url, "url", 2000),
       title: requiredString(req.title, "title", 500),
       domain: requiredString(req.domain, "domain", 200),
-      capturedAt: localTimestamp(),
+      capturedAt: req.capturedAt ?? localTimestamp(),
       markdown: req.text,
     };
   } else {
@@ -85,7 +85,7 @@ async function handleCompose(ctx: ApiContext, request: ApiRequest): Promise<ApiR
       url,
       title: extracted.title,
       domain: domainOf(url),
-      capturedAt: localTimestamp(),
+      capturedAt: req.capturedAt ?? localTimestamp(),
       markdown: extracted.markdown,
     };
   }

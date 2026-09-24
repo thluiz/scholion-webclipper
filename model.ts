@@ -48,6 +48,10 @@ export interface ComposeRequest {
   title?: string;
   domain?: string;
   relatedNotes?: RelatedNote[];
+  // Overrides the default "now" capture timestamp — for reprocessing a
+  // clipping that was already captured earlier (the interactive skill's
+  // file mode) and must keep its original captured_at/<YYYY-MM> folder.
+  capturedAt?: string;
 }
 
 export function slugify(input: string, maxLength = 60): string {
@@ -121,6 +125,7 @@ export function parseComposeRequest(body: Record<string, unknown>): ComposeReque
     title: optionalString(body.title, "title", 500),
     domain: optionalString(body.domain, "domain", 200),
     relatedNotes: parseRelatedNotes(body.relatedNotes),
+    capturedAt: optionalString(body.capturedAt, "capturedAt", 40),
   };
 }
 
