@@ -108,6 +108,14 @@ export function parseRelatedNotes(value: unknown): RelatedNote[] {
   });
 }
 
+// The exact shape localTimestamp() produces: no "Z" shorthand, no
+// milliseconds, always an explicit +HH:MM/-HH:MM offset. capturedAt is
+// caller-supplied (the interactive skill's file mode, the batch playbook's
+// reformatted `created`), so it's the one date field worth validating
+// server-side — a malformed value would otherwise land silently in a
+// note's frontmatter `date:` and in the clipping's folder path.
+const ISO_WITH_OFFSET = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
+
 export function parseComposeRequest(body: Record<string, unknown>): ComposeRequest {
   const url = optionalString(body.url, "url", 2000);
   const text = optionalString(body.text, "text", 1_000_000);
@@ -119,13 +127,20 @@ export function parseComposeRequest(body: Record<string, unknown>): ComposeReque
     throw new ValidationError("when text is provided, title, url and domain are all required too");
   }
 
+  const capturedAt = optionalString(body.capturedAt, "capturedAt", 40);
+  if (capturedAt && !ISO_WITH_OFFSET.test(capturedAt)) {
+    throw new ValidationError(
+      `capturedAt must look like 2026-01-09T13:09:52-03:00 (ISO 8601, explicit offset, no "Z", no milliseconds) — got ${JSON.stringify(capturedAt)}`,
+    );
+  }
+
   return {
     url: url ?? optionalString(body.url, "url", 2000),
     text,
     title: optionalString(body.title, "title", 500),
     domain: optionalString(body.domain, "domain", 200),
     relatedNotes: parseRelatedNotes(body.relatedNotes),
-    capturedAt: optionalString(body.capturedAt, "capturedAt", 40),
+    capturedAt,
   };
 }
 
