@@ -40,6 +40,12 @@
       "_comment": "The interactive Claude Code skill, when it calls this API instead of doing extraction/composition inline.",
       "apiKey": "replace-me-as-well",
       "role": "write"
+    },
+
+    "add-scholion-webclip-batch": {
+      "_comment": "Backlog-import subagents (add-scholion-webclip/batch-playbook.md). Separate principal from the interactive skill on purpose: same MAX_COMPOSES_PER_DAY ceiling, but its own independent window, so a big batch run exhausting its budget never blocks interactive use.",
+      "apiKey": "replace-me-too",
+      "role": "write"
     }
   }
 }
