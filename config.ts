@@ -23,6 +23,9 @@ export interface Config {
   maxComposesPerDay: number;
 
   voxIntelligenceUrl: string;
+  voxTimeoutMs: number;
+  summaryModel: string | undefined;
+  summaryFallbackModels: string[] | undefined;
 
   operationTtlHours: number;
   operationsDir: string;
@@ -79,6 +82,11 @@ export function loadConfig(): Config {
       /\/+$/,
       "",
     ),
+    voxTimeoutMs: num("VOX_TIMEOUT_MS", 90_000),
+    summaryModel: process.env.SUMMARY_MODEL || undefined,
+    summaryFallbackModels: process.env.SUMMARY_FALLBACK_MODELS
+      ? process.env.SUMMARY_FALLBACK_MODELS.split(",").map((m) => m.trim()).filter(Boolean)
+      : undefined,
 
     operationTtlHours: num("OPERATION_TTL_HOURS", 24),
     operationsDir: process.env.OPERATIONS_DIR || "./operations",

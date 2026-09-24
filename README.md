@@ -496,8 +496,10 @@ needs one.
 
 The nginx route's `proxy_read_timeout` is **300s**, not the framework
 default — `compose` makes up to three sequential upstream calls with their
-own timeouts (30s Playwright render + up to 120s `webclip-summary` + up to
-120s `ghost-audit`), so anything tighter risks nginx killing a
+own timeouts (30s Playwright render + up to `VOX_TIMEOUT_MS` + 10s for
+`webclip-summary` + the same for `ghost-audit`; 90s budget by default, sent
+upstream as `timeoutMs` so vox-intelligence abandons the model call when we
+do), so anything tighter risks nginx killing a
 legitimately-slow-but-still-working request before the server gets to
 answer. Caught this at 180s during the first live test against a
 content-heavy GitHub README. A caller's own HTTP client timeout should sit

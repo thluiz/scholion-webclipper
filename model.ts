@@ -24,6 +24,9 @@ export interface NoteDraft {
   tags: string[];
   language: string;
   body: string; // "<resumo>\n\n## Fichamento\n\n- ..."
+  // Model that actually wrote the note (after any fallback), recorded in the
+  // note's frontmatter so a note can be found and regenerated later.
+  generatedBy?: string;
 }
 
 export type AuditVerdict = "green" | "yellow" | "red";

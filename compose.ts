@@ -17,6 +17,7 @@ interface WebclipSummaryResponse {
   tags: string[];
   language: string;
   body: string;
+  model?: string;
   error?: { message: string };
 }
 
@@ -25,7 +26,20 @@ interface GhostAuditResponse {
   error?: { message: string };
 }
 
-async function postJson<T>(url: string, body: unknown, timeoutMs = 120_000): Promise<T> {
+export interface VoxOptions {
+  url: string;
+  // Budget handed to vox-intelligence as `timeoutMs`, so the upstream model
+  // call gives up with us instead of running on orphaned. Our own HTTP abort
+  // sits a little above it, leaving room for vox-intelligence to answer with
+  // its error first.
+  timeoutMs: number;
+  summaryModel?: string;
+  summaryFallbackModels?: string[];
+}
+
+const ABORT_MARGIN_MS = 10_000;
+
+async function postJson<T>(url: string, body: unknown, timeoutMs: number): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -46,18 +60,25 @@ async function postJson<T>(url: string, body: unknown, timeoutMs = 120_000): Pro
 }
 
 async function callWebclipSummary(
-  voxIntelligenceUrl: string,
+  vox: VoxOptions,
   args: { text: string; title: string; url: string; domain: string; relatedNotes: RelatedNote[] },
 ): Promise<NoteDraft> {
   let res: WebclipSummaryResponse;
   try {
-    res = await postJson<WebclipSummaryResponse>(`${voxIntelligenceUrl}/presets/scholion/webclip-summary`, {
-      text: args.text,
-      title: args.title,
-      url: args.url,
-      domain: args.domain,
-      relatedNotes: args.relatedNotes.length ? args.relatedNotes : undefined,
-    });
+    res = await postJson<WebclipSummaryResponse>(
+      `${vox.url}/presets/scholion/webclip-summary`,
+      {
+        text: args.text,
+        title: args.title,
+        url: args.url,
+        domain: args.domain,
+        relatedNotes: args.relatedNotes.length ? args.relatedNotes : undefined,
+        model: vox.summaryModel,
+        fallbackModels: vox.summaryFallbackModels,
+        timeoutMs: vox.timeoutMs,
+      },
+      vox.timeoutMs + ABORT_MARGIN_MS,
+    );
   } catch (error) {
     throw new SummaryFailedError(error instanceof Error ? error.message : String(error));
   }
@@ -69,15 +90,17 @@ async function callWebclipSummary(
     tags: res.tags,
     language: res.language,
     body: res.body,
+    generatedBy: res.model,
   };
 }
 
-async function callGhostAudit(voxIntelligenceUrl: string, content: string, slug: string): Promise<AuditResult> {
+async function callGhostAudit(vox: VoxOptions, content: string, slug: string): Promise<AuditResult> {
   try {
-    const res = await postJson<GhostAuditResponse>(`${voxIntelligenceUrl}/presets/scholion/ghost-audit`, {
-      content,
-      slug,
-    });
+    const res = await postJson<GhostAuditResponse>(
+      `${vox.url}/presets/scholion/ghost-audit`,
+      { content, slug, timeoutMs: vox.timeoutMs },
+      vox.timeoutMs + ABORT_MARGIN_MS,
+    );
     if (!res["x-parsed"]) throw new Error("ghost-audit returned no parsed verdict");
     return res["x-parsed"];
   } catch (error) {
@@ -103,12 +126,12 @@ export interface ComposeResult {
 }
 
 export async function compose(
-  voxIntelligenceUrl: string,
+  vox: VoxOptions,
   clipping: ClippingDraft,
   relatedNotes: RelatedNote[],
   sections: { notes: string; clippings: string },
 ): Promise<ComposeResult> {
-  const note = await callWebclipSummary(voxIntelligenceUrl, {
+  const note = await callWebclipSummary(vox, {
     text: clipping.markdown,
     title: clipping.title,
     url: clipping.url,
@@ -117,7 +140,7 @@ export async function compose(
   });
 
   const rendered = renderOperation(clipping, note, sections);
-  const audit = await callGhostAudit(voxIntelligenceUrl, rendered.noteContent, note.slug);
+  const audit = await callGhostAudit(vox, rendered.noteContent, note.slug);
 
   return { clipping, note, audit, rendered };
 }
