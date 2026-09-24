@@ -87,6 +87,16 @@ describe("parseComposeRequest", () => {
     expect(req.capturedAt).toBeUndefined();
   });
 
+  test("refuses a capturedAt that isn't ISO-with-offset", () => {
+    expect(() => parseComposeRequest({ url: "https://example.com/x", capturedAt: "2026-01-09T13:09:52 (UTC -03:00)" })).toThrow(
+      ValidationError,
+    );
+    expect(() => parseComposeRequest({ url: "https://example.com/x", capturedAt: "2026-01-09T13:09:52Z" })).toThrow(
+      ValidationError,
+    );
+    expect(() => parseComposeRequest({ url: "https://example.com/x", capturedAt: "not a date" })).toThrow(ValidationError);
+  });
+
   test("parses relatedNotes", () => {
     const req = parseComposeRequest({
       url: "https://example.com/x",
