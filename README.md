@@ -494,6 +494,16 @@ generator (copied from `scholion-places`, fully reusable — it reads any
 `acl.json`) are the right move once an OpenClaw-side principal actually
 needs one.
 
+The nginx route's `proxy_read_timeout` is **300s**, not the framework
+default — `compose` makes up to three sequential upstream calls with their
+own timeouts (30s Playwright render + up to 120s `webclip-summary` + up to
+120s `ghost-audit`), so anything tighter risks nginx killing a
+legitimately-slow-but-still-working request before the server gets to
+answer. Caught this at 180s during the first live test against a
+content-heavy GitHub README. A caller's own HTTP client timeout should sit
+above 300s too, for the same reason (the interactive skill's `compose`
+call uses `-TimeoutSec 300`).
+
 `vault/` is a fresh `git clone --filter=blob:none git@github-scholion-content:thluiz/scholion.git`
 — same deploy key `scholion-places` already uses for write access, not the
 narrower `github-scholion` alias.
