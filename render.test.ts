@@ -60,6 +60,13 @@ describe("renderNote", () => {
     expect(out).toContain('tags: ["tag-one", "tag-two"]');
   });
 
+  test("records generated_by only when the model is known", () => {
+    expect(renderNote({ ...note, generatedBy: "openai/gpt-5.4-mini" }, clipping)).toContain(
+      'generated_by: "openai/gpt-5.4-mini"',
+    );
+    expect(renderNote(note, clipping)).not.toContain("generated_by");
+  });
+
   test("body is appended verbatim after the frontmatter", () => {
     const out = renderNote(note, clipping);
     expect(out.endsWith(`${note.body}\n`)).toBe(true);

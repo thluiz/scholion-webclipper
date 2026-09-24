@@ -90,7 +90,13 @@ async function handleCompose(ctx: ApiContext, request: ApiRequest): Promise<ApiR
     };
   }
 
-  const result = await compose(ctx.config.voxIntelligenceUrl, clipping, req.relatedNotes ?? [], {
+  const vox = {
+    url: ctx.config.voxIntelligenceUrl,
+    timeoutMs: ctx.config.voxTimeoutMs,
+    summaryModel: ctx.config.summaryModel,
+    summaryFallbackModels: ctx.config.summaryFallbackModels,
+  };
+  const result = await compose(vox, clipping, req.relatedNotes ?? [], {
     notes: ctx.config.vaultNotesSection,
     clippings: ctx.config.vaultClippingsSection,
   });

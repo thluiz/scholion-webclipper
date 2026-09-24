@@ -64,6 +64,7 @@ export function renderNote(note: NoteDraft, clipping: ClippingDraft): string {
     `summary: ${singleQuote(note.summary)}`,
     `tags: [${note.tags.map(doubleQuote).join(", ")}]`,
     "has_commentary: false",
+    ...(note.generatedBy ? [`generated_by: ${doubleQuote(note.generatedBy)}`] : []),
     "sources:",
     `  - title: ${doubleQuote(clipping.title)}`,
     `    url: ${doubleQuote(clipping.url)}`,
