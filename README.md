@@ -410,6 +410,57 @@ POST /webclip/{operationId}/save          { mode?: "commit" | "return", force?: 
 DELETE /webclip/{operationId}             discard explicitly (optional; also expires on its own)
 ```
 
+## Decision 10 — `mode: "return"` must feed the existing commit-gate marker, not trigger a second audit
+
+The Scholion repo already has a gate independent of this service:
+`ghost-audit-gate.ps1`, a Claude Code `PreToolUse` hook hardcoded to
+`E:\scholion`. It only fires when an interactive session runs `git commit`
+itself, inspects staged `content/notes|research/*.md` blobs, and — for any
+blob without a `.ghost-audit/<blob-oid>.ok` marker — calls the same
+`vox-intelligence` ghost-audit endpoint `compose` already calls, writing
+the marker itself on a green/yellow verdict.
+
+This means the two `save` modes interact with that hook completely
+differently:
+
+- **`mode: "commit"`** never touches it. The write happens in this
+  service's own `vault/` clone via its own git operations, not through a
+  Claude Code session's Bash tool against `E:\scholion` — the hook has no
+  opportunity to run at all. `save`'s own enforcement (Decision 2/3) is the
+  entire gate here.
+- **`mode: "return"`** hands content back for the caller to eventually
+  write into `E:\scholion` and commit — and if that commit runs inside a
+  Claude Code session (the interactive skill, or a batch orchestrator), the
+  hook *will* fire and, finding no marker, will audit the note a second
+  time. That's pure waste: `compose` already ran the identical check
+  against identical content (Decision 8 guarantees no edit happens in
+  between).
+
+The fix is not to bypass the hook — the hook stays exactly as it is, fail-
+open and unaware this service exists — but for whoever ends up committing
+`mode: "return"` content to pre-empt the redundant call: compute the blob's
+git OID right after staging it (`git rev-parse ":<path>"`) and write
+`.ghost-audit/<oid>.ok` directly from the verdict `compose` already
+returned, before running `git commit`. The hook's own dedup
+(`if (Test-Path $marker) { continue }`) then skips it — no code change to
+the hook, no second HTTP round-trip, no drift risk (the marker is only ever
+written for the byte-identical content the verdict was computed against,
+same invariant as Decision 8).
+
+This directly simplifies the batch-import case that motivated `mode:
+"return"` in the first place: `batch-playbook.md` today has each subagent
+call ghost-audit itself, by hand, per note, before writing its marker. Once
+subagents call `compose` instead of drafting by hand, that per-note HTTP
+round-trip has already happened — the orchestrator just needs to write the
+markers it already has verdicts for before its batched commit, not call
+ghost-audit again for anything.
+
+One more asymmetry worth noting: the hook only ever inspects
+`content/notes|research/`, never `clippings/` — consistent with the
+project rule that a raw clipping is extraction, not composed prose, and
+doesn't go through ghost-writer/ghost-audit at all. Only the note's marker
+needs writing; the clipping file never needs one, in either `save` mode.
+
 ## Deployment
 
 Same HermesTools host as `vox-intelligence` and `scholion-places`, same
