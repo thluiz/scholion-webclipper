@@ -1,0 +1,144 @@
+// extract.ts — render a page and turn it into clean Markdown.
+//
+// Node/Bun + Playwright (official bindings, same engine `fetch-webclip.mjs`
+// already used) + @mozilla/readability (the reference implementation the
+// Python/C# ports both copy) + jsdom (to parse the HTML Playwright already
+// rendered — jsdom's own inability to run JS doesn't matter here, Playwright
+// already did that) + turndown for Markdown. See README Decision 1 for why
+// this combination was chosen over Python/C#/Elixir alternatives.
+//
+// The internal render timeout (config.fetchTimeoutMs) is deliberately
+// shorter than any reasonable HTTP client timeout, so a slow page always
+// comes back as a clean `fetch_timeout` response instead of the connection
+// hanging — see README Decision 7 and the incident it responds to.
+
+import { chromium } from "playwright";
+import { JSDOM } from "jsdom";
+import { Readability } from "@mozilla/readability";
+import TurndownService from "turndown";
+
+import {
+  BlockedDomainError,
+  ConsentWallUnresolvedError,
+  FetchFailedError,
+  FetchTimeoutError,
+  ThinContentError,
+} from "./errors";
+import { domainOf } from "./model";
+
+// Domains known to block or actively fight headless scraping. Checked before
+// ever launching a browser — no point paying for a render that will only
+// come back as a challenge page or a login wall.
+const BLOCKED_DOMAINS = [
+  /(^|\.)x\.com$/,
+  /(^|\.)twitter\.com$/,
+  /(^|\.)reddit\.com$/,
+  /(^|\.)instagram\.com$/,
+  /(^|\.)facebook\.com$/,
+  /(^|\.)linkedin\.com$/,
+];
+
+const CONSENT_BUTTON_PATTERN = /^(I Accept|Accept All|Accept Cookies|Agree|Accept)$/i;
+
+// Post-render heuristic for a challenge page that slipped past the domain
+// blocklist (a CDN in front of an otherwise-fine domain, a new offender not
+// in the list yet).
+const CHALLENGE_TITLE_PATTERN = /^(Just a moment|Attention Required|Access denied|Are you a robot)/i;
+
+const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
+
+export interface ExtractResult {
+  title: string;
+  markdown: string;
+}
+
+export interface ExtractOptions {
+  timeoutMs: number;
+  minContentChars: number;
+}
+
+function assertNotBlocked(url: string): void {
+  const host = new URL(url).hostname;
+  if (BLOCKED_DOMAINS.some((pattern) => pattern.test(host))) {
+    throw new BlockedDomainError(host);
+  }
+}
+
+export async function fetchAndExtract(url: string, options: ExtractOptions): Promise<ExtractResult> {
+  assertNotBlocked(url);
+
+  const browser = await chromium.launch();
+  let consentWallSeen = false;
+
+  try {
+    const page = await browser.newPage();
+
+    try {
+      await page.goto(url, { waitUntil: "networkidle", timeout: options.timeoutMs });
+    } catch (error) {
+      const message = describeError(error);
+      if (/timeout/i.test(message)) throw new FetchTimeoutError(url, options.timeoutMs);
+      throw new FetchFailedError(url, message);
+    }
+
+    try {
+      const btn = page.getByRole("button", { name: CONSENT_BUTTON_PATTERN }).first();
+      if (await btn.isVisible({ timeout: 3000 })) {
+        consentWallSeen = true;
+        await btn.click({ timeout: 3000 });
+        await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => undefined);
+        consentWallSeen = false; // dismissed successfully
+      }
+    } catch {
+      // Either no consent wall, or the click failed — consentWallSeen already
+      // reflects which one.
+    }
+
+    const pageTitle = await page.title();
+    if (CHALLENGE_TITLE_PATTERN.test(pageTitle)) {
+      throw new BlockedDomainError(new URL(url).hostname);
+    }
+
+    const html = await page.content();
+    const { title, markdown } = extractFromHtml(html, url, pageTitle);
+
+    const chars = markdown.trim().length;
+    if (chars < options.minContentChars) {
+      if (consentWallSeen) throw new ConsentWallUnresolvedError(url);
+      throw new ThinContentError(chars, options.minContentChars);
+    }
+
+    return { title, markdown };
+  } finally {
+    await browser.close();
+  }
+}
+
+function extractFromHtml(html: string, url: string, fallbackTitle: string): ExtractResult {
+  const dom = new JSDOM(html, { url });
+  const reader = new Readability(dom.window.document);
+  const article = reader.parse();
+
+  if (article?.content) {
+    return {
+      title: article.title || fallbackTitle,
+      markdown: turndown.turndown(article.content),
+    };
+  }
+
+  // Readability found nothing article-shaped (dashboards, landing pages —
+  // see README Decision 1's tradeoff table). Fall back to the naive
+  // article||main||body heuristic the original fetch-webclip.mjs used.
+  const doc = dom.window.document;
+  const fallbackEl = doc.querySelector("article") || doc.querySelector("main") || doc.body;
+  return {
+    title: fallbackTitle,
+    markdown: turndown.turndown(fallbackEl?.innerHTML ?? ""),
+  };
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export { domainOf };
