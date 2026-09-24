@@ -13,14 +13,20 @@ tools it replaces or reuses (`fetch-webclip.mjs`, the interactive
 existing precedent). Read it before changing the architecture, not just
 before calling the API.
 
-**Status: implemented (v0.1), not yet deployed.** All decisions below are
-built and covered by tests (`bun test`) plus a manual end-to-end smoke test
-against the real `vox-intelligence` backend and a scratch git remote —
-compose, both `save` modes, the audit gate, the slug-conflict and
-double-save refusals, and the ACL boundary around `webclip.save.force` all
-verified working. Not yet: a live `verdict: red` + `force: true` run (only
-checked by code review — forcing a real red verdict from the LLM on demand
-wasn't practical), and production deployment (see Deployment below).
+**Status: implemented (v0.1) and deployed (2026-09-24)**, live on
+HermesTools — see Deployment below. All decisions below are built and
+covered by tests (`bun test`) plus a manual end-to-end smoke test against
+the real `vox-intelligence` backend and a scratch git remote before
+deploying, and a real `compose` (real Playwright fetch, real
+`webclip-summary`, real `ghost-audit`) against a live URL through the
+deployed nginx route afterward — compose, both `save` modes, the audit
+gate, the slug-conflict and double-save refusals, and the ACL boundary
+around `webclip.save.force` all verified working. Not yet: a live
+`verdict: red` + `force: true` run (only checked by code review — forcing
+a real red verdict from the LLM on demand wasn't practical), an actual
+`save` against the real vault (deliberately not tested live — it would
+have created a real, publicly-visible commit), and wiring an actual caller
+(the interactive skill still composes inline; see Problem Statement).
 
 ## Problem statement
 
@@ -469,6 +475,69 @@ needs writing; the clipping file never needs one, in either `save` mode.
 
 ## Deployment
 
-Same HermesTools host as `vox-intelligence` and `scholion-places`, same
-reverse-proxy-stamps-the-`X-Api-Key` pattern, before writing the systemd
-unit — not yet done.
+**Live** on HermesTools since 2026-09-24: `/home/hermes/services/scholion-webclipper`,
+port 8020, `scholion-webclipper.service` (`scholion-webclipper.service` in
+this repo is the installed copy), reachable at
+`http://localhost:8080/api/webclip/` — a flat, unstamped `local/` nginx
+route (`/etc/nginx/hermes-routes/local/webclip.conf`), the same tier
+`vox-intelligence`'s own local route uses, not the per-principal-stamped
+`agent/` tier `scholion-places` uses for OpenClaw/Jaci. That's deliberate:
+there's no agent caller yet (Claudinho integration is still future work —
+see Problem Statement), so every current caller already holds and sends
+its own `X-Api-Key`; the stamped-`agent/` tier and its `render-route.sh`
+generator (copied from `scholion-places`, fully reusable — it reads any
+`acl.json`) are the right move once an OpenClaw-side principal actually
+needs one.
+
+`vault/` is a fresh `git clone --filter=blob:none git@github-scholion-content:thluiz/scholion.git`
+— same deploy key `scholion-places` already uses for write access, not the
+narrower `github-scholion` alias.
+
+### The Chromium download gotcha (read before any future re-provision)
+
+`bunx playwright install chromium` fails on this host: Playwright's
+downloader pre-resolves the CDN hostname to a literal IP and requests
+against that IP directly (`https://150.171.109.82/builds/...`), which
+breaks TLS SNI-based cert routing and fails with `ERR_TLS_CERT_ALTNAME_INVALID`
+on every retry. A plain `fetch()` to the hostname URL works fine (verified
+directly) — the bug is specific to how playwright-core's own downloader
+constructs its request, not a network/proxy/cert problem on this host.
+`--with-deps` makes it worse in a second way: it shells out to `sudo
+apt-get install`, which hangs forever with no TTY for a password (the
+`sudo`-in-WSL trap — see CLAUDE.md). Fix used, in order:
+
+1. Install the system libraries Chromium needs **directly as root** (no
+   `sudo`, already root via `wsl -u root`), not via `--with-deps`:
+   ```
+   apt-get update && apt-get install -y --no-install-recommends \
+     libasound2 libatk-bridge2.0-0 libatk1.0-0 libatspi2.0-0 libcairo2 \
+     libcups2 libdbus-1-3 libdrm2 libgbm1 libglib2.0-0 libnspr4 libnss3 \
+     libpango-1.0-0 libwayland-client0 libx11-6 libxcb1 libxcomposite1 \
+     libxdamage1 libxext6 libxfixes3 libxkbcommon0 libxrandr2 xvfb \
+     fonts-noto-color-emoji fonts-unifont libfontconfig1 libfreetype6 \
+     xfonts-cyrillic xfonts-scalable fonts-liberation fonts-ipafont-gothic \
+     fonts-wqy-zenhei fonts-tlwg-loma-otf fonts-freefont-ttf
+   ```
+2. Find the exact revision and expected paths — don't guess, ask
+   Playwright itself: run `bun -e 'require("playwright").chromium.launch()'`
+   with nothing installed and read the `Executable doesn't exist at ...`
+   error message. It names the exact path for whichever variant
+   `chromium.launch()` actually picks (this Playwright version defaults
+   *headless* launches to the separate `chrome-headless-shell` binary, not
+   full Chromium — so check both, headless and `{headless:false}`, to get
+   both paths if you want both installed).
+3. Download both zips directly by hostname (proven to work, unlike
+   Playwright's own fetch) from Chrome for Testing's public bucket:
+   `https://storage.googleapis.com/chrome-for-testing-public/<version>/linux64/chrome-linux64.zip`
+   and `.../chrome-headless-shell-linux64.zip`. Match `<version>` to the
+   `browserVersion` in `node_modules/playwright-core/browsers.json`.
+4. Unzip each directly into the exact path from step 2 (e.g.
+   `~/.cache/ms-playwright/chromium-<revision>/chrome-linux64/`), `chmod +x`
+   the binary, and verify with a real `chromium.launch()` + `page.goto()` —
+   not just file existence, an actual render.
+
+This bypasses Playwright's own downloader and bookkeeping entirely, so a
+later `bunx playwright install` (e.g. after a version bump changes the
+revision) will not recognise these as already installed and will hit the
+same TLS failure — repeat this same manual procedure for the new revision
+rather than trusting the installer.
