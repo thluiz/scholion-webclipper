@@ -77,6 +77,16 @@ describe("parseComposeRequest", () => {
     expect(() => parseComposeRequest({ text: "some content" })).toThrow(ValidationError);
   });
 
+  test("passes through an explicit capturedAt override", () => {
+    const req = parseComposeRequest({ url: "https://example.com/x", capturedAt: "2026-01-05T10:00:00-03:00" });
+    expect(req.capturedAt).toBe("2026-01-05T10:00:00-03:00");
+  });
+
+  test("capturedAt is undefined when not given (caller defaults to now)", () => {
+    const req = parseComposeRequest({ url: "https://example.com/x" });
+    expect(req.capturedAt).toBeUndefined();
+  });
+
   test("parses relatedNotes", () => {
     const req = parseComposeRequest({
       url: "https://example.com/x",
