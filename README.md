@@ -13,8 +13,14 @@ tools it replaces or reuses (`fetch-webclip.mjs`, the interactive
 existing precedent). Read it before changing the architecture, not just
 before calling the API.
 
-**Status: design draft, not yet implemented.** This README exists so the
-design can be reviewed before code is written.
+**Status: implemented (v0.1), not yet deployed.** All decisions below are
+built and covered by tests (`bun test`) plus a manual end-to-end smoke test
+against the real `vox-intelligence` backend and a scratch git remote —
+compose, both `save` modes, the audit gate, the slug-conflict and
+double-save refusals, and the ACL boundary around `webclip.save.force` all
+verified working. Not yet: a live `verdict: red` + `force: true` run (only
+checked by code review — forcing a real red verdict from the LLM on demand
+wasn't practical), and production deployment (see Deployment below).
 
 ## Problem statement
 
