@@ -126,12 +126,17 @@ async function renderAndExtract(
     mark("goto");
 
     try {
-      await page.goto(url, { waitUntil: "networkidle", timeout: options.timeoutMs });
+      // "load", not "networkidle": ad- and tracker-heavy sites (jacobin.com.br,
+      // papodehomem.com.br) never go network-idle, so every render timed out
+      // even though the article was on screen within a few seconds.
+      await page.goto(url, { waitUntil: "load", timeout: options.timeoutMs });
     } catch (error) {
       const message = describeError(error);
       if (/timeout/i.test(message)) throw new FetchTimeoutError(url, options.timeoutMs);
       throw new FetchFailedError(url, message);
     }
+    // Short grace period for client-rendered pages; never fatal.
+    await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => undefined);
 
     try {
       const btn = page.getByRole("button", { name: CONSENT_BUTTON_PATTERN }).first();
