@@ -8,14 +8,15 @@
 
 import { stat } from "node:fs/promises";
 
-import { Acl, AuthenticationError, AuthorizationError, assertOperation, unknownOperations, type Principal } from "../auth/acl";
-import { RateLimitError, WriteBudget } from "../auth/budget";
+import { Acl, assertOperation, unknownOperations, type Principal } from "../auth/acl";
+import { WriteBudget } from "../auth/budget";
 import { loadConfig } from "../config";
-import { ApiError, MethodNotAllowedError, ValidationError, describe } from "../errors";
+import { ValidationError, describe } from "../errors";
+import { errorBody, toApiError } from "./errors";
 import { Logger, type AuditOutcome } from "../lib/logger";
 import { OperationStore } from "../webclip/operations";
 import { matchRoute, type ApiContext, type ApiResult } from "./routes";
-import { SlugExistsError, Vault } from "../vault/vault";
+import { Vault } from "../vault/vault";
 
 const SERVICE = "scholion-webclipper";
 const VERSION = "0.1.0";
@@ -68,40 +69,6 @@ async function currentAcl(): Promise<Acl> {
   return acl;
 }
 
-// ── errors: every response body follows the {error:{code,...}} contract ────
-// (README Decision 7). ApiError carries its own code/status/retryable.
-// acl.ts and budget.ts keep their own error classes (reused unchanged, per
-// Decision 4) — mapped to the same contract here rather than rewritten.
-
-function errorBody(error: unknown): { code: string; message: string; retryable: boolean; details?: unknown } {
-  if (error instanceof ApiError) {
-    return { code: error.code, message: error.message, retryable: error.retryable, details: error.details };
-  }
-  if (error instanceof AuthenticationError) {
-    return { code: "authentication_error", message: error.message, retryable: false };
-  }
-  if (error instanceof AuthorizationError) {
-    return { code: "forbidden", message: error.message, retryable: false };
-  }
-  if (error instanceof RateLimitError) {
-    return { code: "rate_limited", message: error.message, retryable: true };
-  }
-  if (error instanceof SlugExistsError) {
-    return { code: "slug_conflict", message: error.message, retryable: false };
-  }
-  return { code: "internal_error", message: describe(error), retryable: false };
-}
-
-function statusFor(error: unknown): number {
-  if (error instanceof ApiError) return error.status;
-  if (error instanceof AuthenticationError) return 401;
-  if (error instanceof AuthorizationError) return 403;
-  if (error instanceof RateLimitError) return 429;
-  if (error instanceof SlugExistsError) return 409;
-  if (error instanceof MethodNotAllowedError) return 405;
-  return 500;
-}
-
 function outcomeFor(status: number): AuditOutcome {
   if (status === 429) return "rate_limited";
   if (status === 401 || status === 403) return "denied";
@@ -110,11 +77,6 @@ function outcomeFor(status: number): AuditOutcome {
 
 function json(body: unknown, status = 200): Response {
   return Response.json(body, { status });
-}
-
-function errorResponse(error: unknown): Response {
-  const status = statusFor(error);
-  return json({ error: errorBody(error) }, status);
 }
 
 async function readJsonBody(request: Request): Promise<Record<string, unknown>> {
@@ -207,8 +169,9 @@ const server = Bun.serve({
       });
       return response;
     } catch (error) {
-      const status = statusFor(error);
-      const body = errorBody(error);
+      const apiError = toApiError(error);
+      const status = apiError.status;
+      const body = errorBody(apiError);
       if (status === 500) console.error(`[${SERVICE}] ${request.method} ${path}: ${body.message}`);
 
       void logger.write({
@@ -223,7 +186,7 @@ const server = Bun.serve({
         durationMs: Date.now() - started,
         ...audit,
       });
-      return errorResponse(error);
+      return json({ error: body }, status);
     }
   },
 });

@@ -23,7 +23,8 @@ export type ErrorCode =
   | "operation_not_found"
   | "operation_already_saved"
   | "not_found"
-  | "method_not_allowed";
+  | "method_not_allowed"
+  | "internal_error";
 
 export class ApiError extends Error {
   readonly code: ErrorCode;
@@ -146,6 +147,12 @@ export class NotFoundError extends ApiError {
 export class MethodNotAllowedError extends ApiError {
   constructor(message: string) {
     super("method_not_allowed", 405, false, message);
+  }
+}
+
+export class InternalError extends ApiError {
+  constructor(message: string) {
+    super("internal_error", 500, false, message);
   }
 }
 
