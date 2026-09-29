@@ -4,7 +4,7 @@
 // rather than reimplementing either (README Decision 6). This module's only
 // job is: call webclip-summary, render the note deterministically once
 // (render.ts), audit that exact rendered text, and hand back everything
-// needed to build an Operation record.
+// needed to build a PendingOperation record.
 
 import type { AuditResult, ClippingDraft, NoteDraft, RelatedNote } from "./model";
 import { SummaryFailedError } from "../errors";

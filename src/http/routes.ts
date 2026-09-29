@@ -9,9 +9,9 @@ import { compose } from "../webclip/compose";
 import { fetchAndExtract } from "../webclip/extract";
 import { AuditRedError, MethodNotAllowedError, SlugConflictError, ValidationError } from "../errors";
 import { domainOf, parseComposeRequest, requiredString, type ClippingDraft } from "../webclip/model";
-import { OperationStore, type Operation } from "../webclip/operations";
+import { OperationStore, type PendingOperation } from "../webclip/operations";
 import { localTimestamp } from "../lib/time";
-import { assertOperation, type Operation as AclOperation, type Principal } from "../auth/acl";
+import { assertOperation, type Operation, type Principal } from "../auth/acl";
 import { SlugExistsError, Vault } from "../vault/vault";
 
 export interface ApiContext {
@@ -35,11 +35,11 @@ export interface ApiResult {
 export interface Route {
   method: string;
   pattern: RegExp;
-  operation: AclOperation | null;
+  operation: Operation | null;
   handle(ctx: ApiContext, request: ApiRequest): Promise<ApiResult>;
 }
 
-function operationView(op: Operation) {
+function operationView(op: PendingOperation) {
   return {
     operationId: op.id,
     clipping: {
@@ -135,7 +135,7 @@ async function handleSave(ctx: ApiContext, request: ApiRequest): Promise<ApiResu
 
   if (op.audit.verdict === "red") {
     if (!force) throw new AuditRedError(op.audit.findings);
-    assertOperation(request.principal, "webclip.save.force" as AclOperation);
+    assertOperation(request.principal, "webclip.save.force");
   }
 
   if (mode === "return") {
@@ -177,23 +177,23 @@ async function handleSave(ctx: ApiContext, request: ApiRequest): Promise<ApiResu
 }
 
 export const ROUTES: Route[] = [
-  { method: "POST", pattern: /^\/webclip\/compose$/, operation: "webclip.compose" as AclOperation, handle: handleCompose },
+  { method: "POST", pattern: /^\/webclip\/compose$/, operation: "webclip.compose", handle: handleCompose },
   {
     method: "GET",
     pattern: /^\/webclip\/(?<id>[^/]+)$/,
-    operation: "webclip.get" as AclOperation,
+    operation: "webclip.get",
     handle: handleGet,
   },
   {
     method: "POST",
     pattern: /^\/webclip\/(?<id>[^/]+)\/save$/,
-    operation: "webclip.save" as AclOperation,
+    operation: "webclip.save",
     handle: handleSave,
   },
   {
     method: "DELETE",
     pattern: /^\/webclip\/(?<id>[^/]+)$/,
-    operation: "webclip.discard" as AclOperation,
+    operation: "webclip.discard",
     handle: handleDiscard,
   },
 ];

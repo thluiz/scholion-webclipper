@@ -13,7 +13,7 @@ import type { AuditResult, ClippingDraft, NoteDraft } from "./model";
 import type { RenderedOperation } from "./render";
 import { OperationAlreadySavedError, OperationNotFoundError } from "../errors";
 
-export interface Operation {
+export interface PendingOperation {
   id: string;
   principal: string;
   createdAt: string;
@@ -26,7 +26,7 @@ export interface Operation {
 }
 
 export class OperationStore {
-  private readonly byId = new Map<string, Operation>();
+  private readonly byId = new Map<string, PendingOperation>();
 
   constructor(
     private readonly dir: string,
@@ -51,7 +51,7 @@ export class OperationStore {
       if (!name.endsWith(".json")) continue;
       try {
         const raw = await readFile(join(this.dir, name), "utf8");
-        const op = JSON.parse(raw) as Operation;
+        const op = JSON.parse(raw) as PendingOperation;
         if (new Date(op.expiresAt).getTime() < now) {
           await rm(join(this.dir, name), { force: true });
           continue;
@@ -66,9 +66,9 @@ export class OperationStore {
   async create(
     principal: string,
     data: { clipping: ClippingDraft; note: NoteDraft; audit: AuditResult; rendered: RenderedOperation },
-  ): Promise<Operation> {
+  ): Promise<PendingOperation> {
     const now = new Date();
-    const op: Operation = {
+    const op: PendingOperation = {
       id: crypto.randomUUID(),
       principal,
       createdAt: now.toISOString(),
@@ -82,7 +82,7 @@ export class OperationStore {
   }
 
   /** Live (not expired) operation, or undefined. Does not distinguish "never existed" from "expired" — callers that need that use get() + require(). */
-  get(id: string): Operation | undefined {
+  get(id: string): PendingOperation | undefined {
     const op = this.byId.get(id);
     if (!op) return undefined;
     if (new Date(op.expiresAt).getTime() < Date.now()) {
@@ -93,14 +93,14 @@ export class OperationStore {
     return op;
   }
 
-  require(id: string): Operation {
+  require(id: string): PendingOperation {
     const op = this.get(id);
     if (!op) throw new OperationNotFoundError(id);
     return op;
   }
 
   /** require() + refuse a second consumption. Does not mark consumed — the caller does that once the write actually succeeds. */
-  requireUnconsumed(id: string): Operation {
+  requireUnconsumed(id: string): PendingOperation {
     const op = this.require(id);
     if (op.consumed) throw new OperationAlreadySavedError(id);
     return op;
