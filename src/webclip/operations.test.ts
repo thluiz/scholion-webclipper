@@ -10,7 +10,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { OperationAlreadySavedError, OperationNotFoundError } from "./errors";
+import { OperationAlreadySavedError, OperationNotFoundError } from "../errors";
 import { OperationStore } from "./operations";
 import { renderOperation } from "./render";
 import type { AuditResult, ClippingDraft, NoteDraft } from "./model";

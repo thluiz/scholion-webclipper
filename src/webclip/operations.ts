@@ -11,7 +11,7 @@ import { join } from "node:path";
 
 import type { AuditResult, ClippingDraft, NoteDraft } from "./model";
 import type { RenderedOperation } from "./render";
-import { OperationAlreadySavedError, OperationNotFoundError } from "./errors";
+import { OperationAlreadySavedError, OperationNotFoundError } from "../errors";
 
 export interface Operation {
   id: string;

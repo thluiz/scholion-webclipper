@@ -4,15 +4,15 @@
 // the interesting logic here is authorization, not resource CRUD — see
 // README Decisions 2/3/8/9 before changing how `save` behaves.
 
-import type { Config } from "./config";
-import { compose } from "./compose";
-import { fetchAndExtract } from "./extract";
-import { AuditRedError, MethodNotAllowedError, SlugConflictError, ValidationError } from "./errors";
-import { domainOf, parseComposeRequest, requiredString, type ClippingDraft } from "./model";
-import { OperationStore, type Operation } from "./operations";
-import { localTimestamp } from "./time";
-import { assertOperation, type Operation as AclOperation, type Principal } from "./acl";
-import { SlugExistsError, Vault } from "./vault";
+import type { Config } from "../config";
+import { compose } from "../webclip/compose";
+import { fetchAndExtract } from "../webclip/extract";
+import { AuditRedError, MethodNotAllowedError, SlugConflictError, ValidationError } from "../errors";
+import { domainOf, parseComposeRequest, requiredString, type ClippingDraft } from "../webclip/model";
+import { OperationStore, type Operation } from "../webclip/operations";
+import { localTimestamp } from "../lib/time";
+import { assertOperation, type Operation as AclOperation, type Principal } from "../auth/acl";
+import { SlugExistsError, Vault } from "../vault/vault";
 
 export interface ApiContext {
   config: Config;

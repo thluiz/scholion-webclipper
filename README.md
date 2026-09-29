@@ -163,7 +163,7 @@ this host, solved authorization and abuse-prevention for exactly this class
 of problem: an API a bot might call, backed by a git-versioned Markdown
 repository, that a human also needs privileged access to.
 
-- **`acl.ts`** — API-key-identified principals, roles (`read`/`write`/
+- **`src/auth/acl.ts`** — API-key-identified principals, roles (`read`/`write`/
   `admin`), per-principal `allow`/`deny` overrides on top of a role, and the
   rule that a denied operation is omitted from `GET /me` rather than merely
   refused when called (so a calling agent never learns a capability exists
@@ -171,7 +171,7 @@ repository, that a human also needs privileged access to.
   changes to name this service's own operations
   (`webclip.compose`, `webclip.save`, `webclip.save.force`, `webclip.get`,
   `webclip.discard`).
-- **`budget.ts`** (`WriteBudget`) — a per-principal per-minute/per-day
+- **`src/auth/budget.ts`** (`WriteBudget`) — a per-principal per-minute/per-day
   ceiling, sized to stop a retry loop, not a person. Directly relevant here
   because `compose` calls a paid LLM through `vox-intelligence`; an agent
   stuck retrying a failing compose call is not just a nuisance, it's a
@@ -481,7 +481,7 @@ needs writing; the clipping file never needs one, in either `save` mode.
 ## Deployment
 
 **Live** on HermesTools since 2026-09-24: `/home/hermes/services/scholion-webclipper`,
-port 8020, `scholion-webclipper.service` (`scholion-webclipper.service` in
+port 8020, `scholion-webclipper.service` (`deploy/scholion-webclipper.service` in
 this repo is the installed copy), reachable at
 `http://localhost:8080/api/webclip/` — a flat, unstamped `local/` nginx
 route (`/etc/nginx/hermes-routes/local/webclip.conf`), the same tier

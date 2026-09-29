@@ -8,14 +8,14 @@
 
 import { stat } from "node:fs/promises";
 
-import { Acl, AuthenticationError, AuthorizationError, assertOperation, unknownOperations, type Principal } from "./acl";
-import { RateLimitError, WriteBudget } from "./budget";
-import { loadConfig } from "./config";
-import { ApiError, MethodNotAllowedError, ValidationError, describe } from "./errors";
-import { Logger, type AuditOutcome } from "./logger";
-import { OperationStore } from "./operations";
+import { Acl, AuthenticationError, AuthorizationError, assertOperation, unknownOperations, type Principal } from "../auth/acl";
+import { RateLimitError, WriteBudget } from "../auth/budget";
+import { loadConfig } from "../config";
+import { ApiError, MethodNotAllowedError, ValidationError, describe } from "../errors";
+import { Logger, type AuditOutcome } from "../lib/logger";
+import { OperationStore } from "../webclip/operations";
 import { matchRoute, type ApiContext, type ApiResult } from "./routes";
-import { SlugExistsError, Vault } from "./vault";
+import { SlugExistsError, Vault } from "../vault/vault";
 
 const SERVICE = "scholion-webclipper";
 const VERSION = "0.1.0";

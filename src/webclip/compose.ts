@@ -7,7 +7,7 @@
 // needed to build an Operation record.
 
 import type { AuditResult, ClippingDraft, NoteDraft, RelatedNote } from "./model";
-import { SummaryFailedError } from "./errors";
+import { SummaryFailedError } from "../errors";
 import { renderOperation, type RenderedOperation } from "./render";
 
 interface WebclipSummaryResponse {

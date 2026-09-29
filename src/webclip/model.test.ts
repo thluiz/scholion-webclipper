@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { ValidationError } from "./errors";
+import { ValidationError } from "../errors";
 import { domainOf, inferSourceKind, monthOf, parseComposeRequest, parseRelatedNotes, slugify } from "./model";
 
 describe("slugify", () => {

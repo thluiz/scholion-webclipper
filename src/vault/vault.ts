@@ -12,7 +12,7 @@ import { $ } from "bun";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import type { RenderedOperation } from "./render";
+import type { RenderedOperation } from "../webclip/render";
 
 export class SlugExistsError extends Error {
   readonly status = 409;

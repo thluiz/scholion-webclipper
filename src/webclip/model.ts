@@ -1,7 +1,7 @@
 // model.ts — the shapes that flow between extract, compose, the operation
 // store, and the vault. Validation lives here so routes.ts stays thin.
 
-import { ValidationError } from "./errors";
+import { ValidationError } from "../errors";
 
 export interface RelatedNote {
   slug: string;

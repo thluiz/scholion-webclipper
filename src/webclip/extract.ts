@@ -23,7 +23,7 @@ import {
   FetchFailedError,
   FetchTimeoutError,
   ThinContentError,
-} from "./errors";
+} from "../errors";
 import { domainOf } from "./model";
 
 // Domains known to block or actively fight headless scraping. Checked before
