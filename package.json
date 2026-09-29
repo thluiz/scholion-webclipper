@@ -4,7 +4,7 @@
   "description": "Fetch, extract and compose Scholion webclip notes behind an authorized, auditable HTTP API.",
   "type": "module",
   "scripts": {
-    "start": "bun run src/http/server.ts",
+    "start": "bun run src/main.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },

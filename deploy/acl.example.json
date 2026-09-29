@@ -19,7 +19,7 @@
     "A denied operation is left out of what GET /me reports, so a client",
     "built from that list never learns it exists.",
     "",
-    "The operation names are the ones in acl.ts. A name that matches none of",
+    "The operation names are the ones in src/auth/acl.ts. A name that matches none of",
     "them is warned about at boot — a typo in a deny list looks like a",
     "control and is none."
   ],
