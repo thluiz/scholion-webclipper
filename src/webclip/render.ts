@@ -52,7 +52,23 @@ export function renderClipping(clipping: ClippingDraft): string {
   ].join("\n");
 }
 
-export function renderNote(note: NoteDraft, clipping: ClippingDraft): string {
+// The related notes the author approved in the search-first step. The model
+// only gets them as optional context (webclip-summary links "ONLY when a
+// point already being made genuinely connects"), so in practice it almost
+// never links. This block makes the author's choice deterministic: every
+// approved note not already linked in the body gets a line here, as a full
+// markdown link (feedback_links_internos_clicaveis), in the note's language.
+export function renderRelatedNotes(note: NoteDraft, relatedNotes: RelatedNote[]): string {
+  const pending = relatedNotes.filter(
+    (n) => !note.body.includes(`/notes/${n.slug}`) && !note.body.includes(`[[${n.slug}`),
+  );
+  if (pending.length === 0) return "";
+  const heading = note.language.toLowerCase().startsWith("pt") ? "## Notas relacionadas" : "## Related notes";
+  const lines = pending.map((n) => `- [${n.title.replace(/([[\]])/g, "\\$1")}](/notes/${n.slug}/)`);
+  return `${heading}\n\n${lines.join("\n")}`;
+}
+
+export function renderNote(note: NoteDraft, clipping: ClippingDraft, relatedNotes: RelatedNote[] = []): string {
   const kind = inferSourceKind(clipping.domain);
   const archived = archivedClippingUrl(clipping.capturedAt, clipping.domain, note.slug);
 
@@ -75,7 +91,8 @@ export function renderNote(note: NoteDraft, clipping: ClippingDraft): string {
     "---",
   ].join("\n");
 
-  return `${frontmatter}\n\n${note.body.trim()}\n`;
+  const related = renderRelatedNotes(note, relatedNotes);
+  return `${frontmatter}\n\n${note.body.trim()}\n${related ? `\n${related}\n` : ""}`;
 }
 
 export interface RenderedOperation {
@@ -89,11 +106,12 @@ export function renderOperation(
   clipping: ClippingDraft,
   note: NoteDraft,
   sections: { notes: string; clippings: string },
+  relatedNotes: RelatedNote[] = [],
 ): RenderedOperation {
   return {
     clippingContent: renderClipping(clipping),
     clippingRelPath: clippingPath(sections.clippings, clipping.capturedAt, clipping.domain, note.slug),
-    noteContent: renderNote(note, clipping),
+    noteContent: renderNote(note, clipping, relatedNotes),
     noteRelPath: notePath(sections.notes, note.slug),
   };
 }

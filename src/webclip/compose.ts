@@ -139,7 +139,7 @@ export async function compose(
     relatedNotes,
   });
 
-  const rendered = renderOperation(clipping, note, sections);
+  const rendered = renderOperation(clipping, note, sections, relatedNotes);
   const audit = await callGhostAudit(vox, rendered.noteContent, note.slug);
 
   return { clipping, note, audit, rendered };

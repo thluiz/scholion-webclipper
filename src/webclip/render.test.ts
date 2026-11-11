@@ -73,6 +73,39 @@ describe("renderNote", () => {
   });
 });
 
+describe("related notes block", () => {
+  const related = [
+    { slug: "note-a", title: "Note A", hint: "same topic" },
+    { slug: "note-b", title: "Note [B]" },
+  ];
+
+  test("appends a markdown link per approved note after the body", () => {
+    const out = renderNote({ ...note, body: "Body.", language: "en" }, clipping, related);
+    expect(out.endsWith("Body.\n\n## Related notes\n\n- [Note A](/notes/note-a/)\n- [Note \\[B\\]](/notes/note-b/)\n")).toBe(true);
+  });
+
+  test("uses a Portuguese heading for pt notes", () => {
+    const out = renderNote({ ...note, language: "pt-BR" }, clipping, related);
+    expect(out).toContain("## Notas relacionadas");
+  });
+
+  test("skips notes the model already linked (markdown path or wikilink)", () => {
+    const body = "See [A](/notes/note-a/) and [[note-b|B]].";
+    const out = renderNote({ ...note, body, language: "en" }, clipping, related);
+    expect(out).not.toContain("Related notes");
+  });
+
+  test("adds nothing when no related notes were approved", () => {
+    expect(renderNote(note, clipping, [])).toBe(renderNote(note, clipping));
+    expect(renderNote(note, clipping)).not.toContain("Related notes");
+  });
+
+  test("renderOperation threads related notes into the rendered note", () => {
+    const rendered = renderOperation(clipping, note, { notes: "content/notes", clippings: "clippings" }, related);
+    expect(rendered.noteContent).toContain("(/notes/note-a/)");
+  });
+});
+
 describe("path helpers", () => {
   test("clippingPath uses the captured month, not today's", () => {
     expect(clippingPath("clippings", "2026-01-05T10:00:00-03:00", "example-com", "some-slug")).toBe(
