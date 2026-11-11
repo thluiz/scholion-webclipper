@@ -308,6 +308,17 @@ an existing operation. Wanting to add links after seeing an initial draft
 just means calling `compose` again with `relatedNotes` filled in — no
 separate patch endpoint needed.
 
+**How `relatedNotes` reach the note.** The `webclip-summary` prompt only
+lets the model link a related note when a point it is already making
+genuinely connects (`[[slug|text]]`), so in practice an approved note was
+almost never linked. `renderNote` therefore appends a deterministic block
+after the body: `## Related notes` (`## Notas relacionadas` when the note's
+language is `pt`) with one full markdown link, `[title](/notes/slug/)`, per
+approved note the body does not already link (checked by `/notes/<slug>`
+path or `[[slug` wikilink). The block is built inside `compose`, before
+ghost-audit, so the audited text is still the saved text (Decision 8). It
+is part of the rendered note, not of `note.body` in the `compose` response.
+
 `capturedAt` (optional, any mode) overrides the default "now" timestamp —
 for the interactive skill's file mode, reprocessing a clipping that was
 already captured earlier and must keep its original `captured_at` and
