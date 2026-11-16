@@ -130,14 +130,17 @@ export async function compose(
   clipping: ClippingDraft,
   relatedNotes: RelatedNote[],
   sections: { notes: string; clippings: string },
+  options: { slug?: string } = {},
 ): Promise<ComposeResult> {
-  const note = await callWebclipSummary(vox, {
+  const drafted = await callWebclipSummary(vox, {
     text: clipping.markdown,
     title: clipping.title,
     url: clipping.url,
     domain: clipping.domain,
     relatedNotes,
   });
+  // Caller-chosen slug wins over the model's, before render + audit (see ComposeRequest.slug).
+  const note = options.slug ? { ...drafted, slug: options.slug } : drafted;
 
   const rendered = renderOperation(clipping, note, sections, relatedNotes);
   const audit = await callGhostAudit(vox, rendered.noteContent, note.slug);

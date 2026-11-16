@@ -55,7 +55,14 @@ export interface ComposeRequest {
   // clipping that was already captured earlier (the interactive skill's
   // file mode) and must keep its original captured_at/<YYYY-MM> folder.
   capturedAt?: string;
+  // Overrides the slug the summary model derives from the title — for two
+  // different pages whose titles slugify to the same (60-char-truncated) slug,
+  // e.g. "Part 1" / "Part 2" of a series. Applied before rendering and before
+  // the ghost-audit, so the audited text is still the saved text (Decision 8).
+  slug?: string;
 }
+
+const SLUG_SHAPE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export function slugify(input: string, maxLength = 60): string {
   const stripped = input
@@ -137,6 +144,11 @@ export function parseComposeRequest(body: Record<string, unknown>): ComposeReque
     );
   }
 
+  const slug = optionalString(body.slug, "slug", 100);
+  if (slug && !SLUG_SHAPE.test(slug)) {
+    throw new ValidationError(`slug must be lowercase a-z, 0-9 and single hyphens (e.g. "part-2-of-the-series") — got ${JSON.stringify(slug)}`);
+  }
+
   return {
     url: url ?? optionalString(body.url, "url", 2000),
     text,
@@ -144,6 +156,7 @@ export function parseComposeRequest(body: Record<string, unknown>): ComposeReque
     domain: optionalString(body.domain, "domain", 200),
     relatedNotes: parseRelatedNotes(body.relatedNotes),
     capturedAt,
+    slug,
   };
 }
 

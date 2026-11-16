@@ -104,6 +104,21 @@ describe("parseComposeRequest", () => {
     });
     expect(req.relatedNotes).toEqual([{ slug: "a-note", title: "A Note", hint: "same topic" }]);
   });
+
+  test("passes through an explicit slug override", () => {
+    const req = parseComposeRequest({ url: "https://example.com/x", slug: "supplement-income-part-1" });
+    expect(req.slug).toBe("supplement-income-part-1");
+  });
+
+  test("slug is undefined when not given (model-derived slug is used)", () => {
+    expect(parseComposeRequest({ url: "https://example.com/x" }).slug).toBeUndefined();
+  });
+
+  test("refuses a slug that isn't lowercase-hyphenated", () => {
+    for (const bad of ["Part-1", "part_1", "part--1", "-part", "part-", "part 1", "../x"]) {
+      expect(() => parseComposeRequest({ url: "https://example.com/x", slug: bad })).toThrow(ValidationError);
+    }
+  });
 });
 
 describe("parseRelatedNotes", () => {

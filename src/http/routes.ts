@@ -96,10 +96,13 @@ async function handleCompose(ctx: ApiContext, request: ApiRequest): Promise<ApiR
     summaryModel: ctx.config.summaryModel,
     summaryFallbackModels: ctx.config.summaryFallbackModels,
   };
-  const result = await compose(vox, clipping, req.relatedNotes ?? [], {
-    notes: ctx.config.vaultNotesSection,
-    clippings: ctx.config.vaultClippingsSection,
-  });
+  const result = await compose(
+    vox,
+    clipping,
+    req.relatedNotes ?? [],
+    { notes: ctx.config.vaultNotesSection, clippings: ctx.config.vaultClippingsSection },
+    { slug: req.slug },
+  );
 
   const op = await ctx.operations.create(request.principal.name, result);
 

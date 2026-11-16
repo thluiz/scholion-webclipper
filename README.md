@@ -324,6 +324,14 @@ for the interactive skill's file mode, reprocessing a clipping that was
 already captured earlier and must keep its original `captured_at` and
 `<YYYY-MM>` folder rather than today's.
 
+`slug` (optional, any mode, lowercase `a-z0-9` with single hyphens)
+overrides the slug the summary model derives from the title. It exists for
+two different pages whose titles collapse to the same 60-char-truncated slug
+("Part 1" / "Part 2" of a series, two pages titled the same on different
+sites), which `save` would otherwise refuse as a `slug_conflict`. It is
+applied before rendering and before the ghost-audit, so the audited text is
+still exactly the saved text (Decision 8).
+
 ## Decision 9 — `save` can commit itself, or hand the content back for the caller to commit
 
 Default behavior (`mode: "commit"`, the implicit default) is what's
@@ -426,7 +434,7 @@ gap lasted. One commit means the link is never dangling even for a moment.
 GET  /health                              no key required
 GET  /me                                  what your key may do
 
-POST /webclip/compose                     {url} or {text,title,url,domain}, relatedNotes?, capturedAt?
+POST /webclip/compose                     {url} or {text,title,url,domain}, relatedNotes?, capturedAt?, slug?
   → { operationId, clipping, note, audit: {verdict, findings, summary}, expiresAt }
 
 GET  /webclip/{operationId}               poll a pending operation
