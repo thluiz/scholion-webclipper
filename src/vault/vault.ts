@@ -8,7 +8,6 @@
 // writes" shape — never the record-then-render-separately pattern
 // scholion-places uses for its own, different reasons.
 
-import { $ } from "bun";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
@@ -35,19 +34,39 @@ export interface VaultOptions {
   authorEmail?: string;
   autoPush?: boolean;
   pushDelayMs?: number;
+  /** Kill a local git command (add, commit, status...) after this long. */
+  gitTimeoutMs?: number;
+  /** Kill a network git command (fetch, pull, push) after this long. */
+  gitNetworkTimeoutMs?: number;
+  /** Give up waiting on a whole queued task after this long. */
+  taskTimeoutMs?: number;
+}
+
+export class QueueTaskTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`vault task did not finish within ${timeoutMs}ms; the queue moved on`);
+    this.name = "QueueTaskTimeoutError";
+  }
 }
 
 /**
  * A promise chain that runs one task at a time.
  *
- * Deliberately not a library: the only requirement is that a failed task
- * does not poison the ones behind it, which is the single line below.
+ * Deliberately not a library: a failed task must not poison the ones behind
+ * it, and a task that never settles must not block them forever. The second
+ * rule came from 2026-11-16: a push scheduled at 20:11:22 never returned and
+ * every save after it waited on it until the service was restarted the next
+ * day. The git commands themselves are killed by their own timeout (see
+ * `runGit`); this cap is the backstop for anything else a task awaits.
  */
 export class SerialQueue {
   private tail: Promise<unknown> = Promise.resolve();
 
+  constructor(private readonly taskTimeoutMs = 10 * 60_000) {}
+
   run<T>(task: () => Promise<T>): Promise<T> {
-    const result = this.tail.then(task, task);
+    const capped = () => withTimeout(task(), this.taskTimeoutMs);
+    const result = this.tail.then(capped, capped);
     this.tail = result.catch(() => undefined);
     return result;
   }
@@ -57,6 +76,68 @@ export class SerialQueue {
   }
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cap = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new QueueTaskTimeoutError(timeoutMs)), timeoutMs);
+  });
+  return Promise.race([promise, cap]).finally(() => clearTimeout(timer));
+}
+
+export interface GitResult {
+  ok: boolean;
+  exitCode: number | null;
+  out: string;
+  timedOut: boolean;
+}
+
+// ssh must never wait on a prompt or a dead connection: fail fast instead.
+const GIT_ENV = {
+  GIT_TERMINAL_PROMPT: "0",
+  GIT_SSH_COMMAND:
+    process.env.GIT_SSH_COMMAND ??
+    "ssh -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=3",
+};
+
+/**
+ * Run `git -C root ...args`, killing it (SIGKILL) if it runs past
+ * `timeoutMs`. Never throws for a non-zero exit; the caller reads `ok`.
+ */
+export async function runGit(root: string, args: string[], timeoutMs: number): Promise<GitResult> {
+  return runCommand(["git", "-C", root, ...args], timeoutMs, GIT_ENV);
+}
+
+export async function runCommand(
+  cmd: string[],
+  timeoutMs: number,
+  env: Record<string, string> = {},
+): Promise<GitResult> {
+  const proc = Bun.spawn({
+    cmd,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, ...env },
+    timeout: timeoutMs,
+    killSignal: "SIGKILL",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  // Only our own timeout sends SIGKILL to this child.
+  const timedOut = proc.signalCode === "SIGKILL";
+  const out = `${stdout}${stderr}`.trim();
+  return {
+    ok: exitCode === 0 && !timedOut,
+    exitCode,
+    out: timedOut ? `timed out after ${timeoutMs}ms: ${cmd.slice(3).join(" ")}${out ? ` (${out})` : ""}` : out,
+    timedOut,
+  };
+}
+
+const NETWORK_COMMANDS = new Set(["fetch", "pull", "push"]);
+
 export interface CommitResult {
   sha: string | null;
   pushed: boolean;
@@ -64,12 +145,14 @@ export interface CommitResult {
 
 export class Vault {
   readonly root: string;
-  readonly queue = new SerialQueue();
+  readonly queue: SerialQueue;
 
   private readonly authorName: string;
   private readonly authorEmail: string;
   private readonly autoPush: boolean;
   private readonly pushDelayMs: number;
+  private readonly gitTimeoutMs: number;
+  private readonly gitNetworkTimeoutMs: number;
   private pushTimer: ReturnType<typeof setTimeout> | null = null;
   private syncState: SyncState = {};
 
@@ -79,6 +162,9 @@ export class Vault {
     this.authorEmail = options.authorEmail ?? "scholion-webclipper@localhost";
     this.autoPush = options.autoPush ?? false;
     this.pushDelayMs = options.pushDelayMs ?? 2_000;
+    this.gitTimeoutMs = options.gitTimeoutMs ?? 60_000;
+    this.gitNetworkTimeoutMs = options.gitNetworkTimeoutMs ?? 120_000;
+    this.queue = new SerialQueue(options.taskTimeoutMs ?? 10 * 60_000);
   }
 
   async noteExists(relPath: string): Promise<boolean> {
@@ -111,23 +197,23 @@ export class Vault {
   }
 
   private async headSha(): Promise<string> {
-    const result = await $`git -C ${this.root} rev-parse HEAD`.quiet();
-    return result.stdout.toString().trim();
+    const result = await this.run("rev-parse", "HEAD");
+    if (!result.ok) throw new Error(`git rev-parse failed: ${result.out}`);
+    return result.out;
   }
 
   /** Stage and commit an explicit set of paths, then schedule the push. Returns null if there was nothing to commit. */
   private async commit(pathspecs: string[], message: string): Promise<boolean | null> {
-    await $`git -C ${this.root} add -- ${pathspecs}`.quiet();
+    const added = await this.run("add", "--", ...pathspecs);
+    if (!added.ok) throw new Error(`git add failed: ${added.out}`);
 
-    const result =
-      await $`git -C ${this.root} -c user.name=${this.authorName} -c user.email=${this.authorEmail} commit -m ${message}`
-        .quiet()
-        .nothrow();
+    const result = await this.run(
+      "-c", `user.name=${this.authorName}`, "-c", `user.email=${this.authorEmail}`, "commit", "-m", message,
+    );
 
-    if (result.exitCode !== 0) {
-      const output = `${result.stdout.toString()}${result.stderr.toString()}`;
-      if (/nothing to commit|no changes added/i.test(output)) return null;
-      throw new Error(`git commit failed: ${output.trim()}`);
+    if (!result.ok) {
+      if (!result.timedOut && /nothing to commit|no changes added/i.test(result.out)) return null;
+      throw new Error(`git commit failed: ${result.out}`);
     }
 
     this.schedulePush();
@@ -144,15 +230,22 @@ export class Vault {
   }
 
   async sync(): Promise<void> {
-    return this.queue.run(() => this.syncUnqueued());
+    try {
+      await this.queue.run(() => this.syncUnqueued());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.syncState = { ...this.syncState, lastError: `sync failed: ${message}` };
+      console.error(`[vault] sync failed: ${message}`);
+      throw error;
+    }
   }
 
-  private async run(...args: string[]): Promise<{ ok: boolean; out: string }> {
-    const result = await $`git -C ${this.root} ${args}`.quiet().nothrow();
-    return {
-      ok: result.exitCode === 0,
-      out: `${result.stdout.toString()}${result.stderr.toString()}`.trim(),
-    };
+  private async run(...args: string[]): Promise<GitResult> {
+    const sub = args.find((a, i) => !a.startsWith("-") && args[i - 1] !== "-c");
+    const timeout = sub && NETWORK_COMMANDS.has(sub) ? this.gitNetworkTimeoutMs : this.gitTimeoutMs;
+    const result = await runGit(this.root, args, timeout);
+    if (result.timedOut) console.error(`[vault] ${result.out}`);
+    return result;
   }
 
   private async isDirty(): Promise<boolean> {

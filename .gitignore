@@ -4,7 +4,7 @@
 acl.json
 
 # The working clone of the content repository. Large, and not ours to version.
-vault/
+/vault/
 
 # Pending compose→save operations. Ephemeral by design (TTL-based), and
 # holds drafted note content that hasn't been reviewed yet.
@@ -15,3 +15,4 @@ logs/
 node_modules/
 bun.lockb
 *.log
+/operations-archive-*/
