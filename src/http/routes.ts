@@ -13,6 +13,7 @@ import { OperationStore, type PendingOperation } from "../webclip/operations";
 import { localTimestamp } from "../lib/time";
 import { assertOperation, type Operation, type Principal } from "../auth/acl";
 import { SlugExistsError, Vault } from "../vault/vault";
+import { asDraft } from "../webclip/render";
 
 export interface ApiContext {
   config: Config;
@@ -135,25 +136,33 @@ async function handleSave(ctx: ApiContext, request: ApiRequest): Promise<ApiResu
   const op = ctx.operations.requireUnconsumed(request.params.id);
   const mode = parseSaveMode(request.body);
   const force = request.body.force === true;
+  // A red note may always be kept as an unpublished draft (`draft: true`);
+  // publishing it still takes webclip.save.force. A draft save does not
+  // consume the operation, so the author can still force it while it lives.
+  const draft = request.body.draft === true && !force;
 
-  if (op.audit.verdict === "red") {
+  if (op.audit.verdict === "red" && !draft) {
     if (!force) throw new AuditRedError(op.audit.findings);
     assertOperation(request.principal, "webclip.save.force");
   }
 
+  const rendered = draft ? { ...op.rendered, noteContent: asDraft(op.rendered.noteContent) } : op.rendered;
+  const sourceUrl = op.clipping.url;
+
   if (mode === "return") {
-    if (await ctx.vault.noteExists(op.rendered.noteRelPath)) {
+    if (!(await ctx.vault.canWriteNote(rendered.noteRelPath, sourceUrl))) {
       throw new SlugConflictError(op.note.slug);
     }
-    await ctx.operations.markConsumed(op.id);
+    if (!draft) await ctx.operations.markConsumed(op.id);
     return {
       status: 200,
       body: {
         slug: op.note.slug,
-        notePath: op.rendered.noteRelPath,
-        clippingPath: op.rendered.clippingRelPath,
-        clippingContent: op.rendered.clippingContent,
-        noteContent: op.rendered.noteContent,
+        notePath: rendered.noteRelPath,
+        clippingPath: rendered.clippingRelPath,
+        clippingContent: rendered.clippingContent,
+        noteContent: rendered.noteContent,
+        draft,
         commit: null,
       },
       audit: { operationId: op.id, slug: op.note.slug },
@@ -161,14 +170,18 @@ async function handleSave(ctx: ApiContext, request: ApiRequest): Promise<ApiResu
   }
 
   try {
-    const commit = await ctx.vault.save(op.rendered, `webclip: ${op.note.title}`);
-    await ctx.operations.markConsumed(op.id);
+    const message = draft
+      ? `webclip (rascunho, ghost-audit red): ${op.note.title}`
+      : `webclip: ${op.note.title}`;
+    const commit = await ctx.vault.save(rendered, message, sourceUrl);
+    if (!draft) await ctx.operations.markConsumed(op.id);
     return {
       status: 200,
       body: {
         slug: op.note.slug,
-        notePath: op.rendered.noteRelPath,
-        clippingPath: op.rendered.clippingRelPath,
+        notePath: rendered.noteRelPath,
+        clippingPath: rendered.clippingRelPath,
+        draft,
         commit,
       },
       audit: { operationId: op.id, slug: op.note.slug },

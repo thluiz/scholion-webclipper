@@ -8,7 +8,17 @@
 import { describe, expect, test } from "bun:test";
 
 import type { ClippingDraft, NoteDraft } from "./model";
-import { archivedClippingUrl, clippingPath, notePath, renderClipping, renderNote, renderOperation } from "./render";
+import {
+  archivedClippingUrl,
+  asDraft,
+  clippingPath,
+  isDraft,
+  isReplaceableDraft,
+  notePath,
+  renderClipping,
+  renderNote,
+  renderOperation,
+} from "./render";
 
 const clipping: ClippingDraft = {
   url: "https://martinfowler.com/articles/x.html",
@@ -132,5 +142,31 @@ describe("renderOperation", () => {
     expect(rendered.clippingRelPath).toBe("clippings/2026-09/martinfowler-com--a-quoted-title.md");
     expect(rendered.noteContent).toBe(renderNote(note, clipping));
     expect(rendered.clippingContent).toBe(renderClipping(clipping));
+  });
+});
+
+describe("drafts (red notes kept unpublished)", () => {
+  const rendered = renderNote(note, clipping);
+
+  test("asDraft adds draft + audit_verdict right after the category, body untouched", () => {
+    const draft = asDraft(rendered);
+    expect(draft).toContain('category: webclip\ndraft: true\naudit_verdict: "red"\n');
+    expect(draft.split("---\n").slice(2).join("---\n")).toBe(rendered.split("---\n").slice(2).join("---\n"));
+    expect(isDraft(draft)).toBe(true);
+    expect(isDraft(rendered)).toBe(false);
+    expect(asDraft(draft)).toBe(draft);
+  });
+
+  test("a draft of the same page is replaceable; a published note or another page is not", () => {
+    const draft = asDraft(rendered);
+    expect(isReplaceableDraft(draft, clipping.url)).toBe(true);
+    expect(isReplaceableDraft(draft, "http://www.martinfowler.com/articles/x.html/")).toBe(true);
+    expect(isReplaceableDraft(draft, "https://martinfowler.com/articles/other.html")).toBe(false);
+    expect(isReplaceableDraft(rendered, clipping.url)).toBe(false);
+    expect(isReplaceableDraft(draft.replace(/\n/g, "\r\n"), clipping.url)).toBe(true);
+  });
+
+  test("draft in the body text does not count", () => {
+    expect(isDraft(rendered + "\ndraft: true\n")).toBe(false);
   });
 });

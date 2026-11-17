@@ -95,6 +95,45 @@ export function renderNote(note: NoteDraft, clipping: ClippingDraft, relatedNote
   return `${frontmatter}\n\n${note.body.trim()}\n${related ? `\n${related}\n` : ""}`;
 }
 
+/**
+ * The audited note, marked as an unpublished draft: `draft: true` (Hugo
+ * leaves it out of the build) and `audit_verdict: "red"` go right after
+ * `category: webclip`. This is the one change allowed between audit and
+ * write (Decision 8): two frontmatter lines, never the body, and only on a
+ * note that is not being published. Saving a red note as a draft keeps the
+ * capture and the composed text in the vault instead of in a 24h operation.
+ */
+export function asDraft(noteContent: string): string {
+  if (isDraft(noteContent)) return noteContent;
+  return noteContent.replace(/^category: webclip$/m, 'category: webclip\ndraft: true\naudit_verdict: "red"');
+}
+
+function frontmatterOf(content: string): string {
+  const m = content.match(/^---\n([\s\S]*?)\n---/);
+  return m ? m[1] : "";
+}
+
+export function isDraft(noteContent: string): boolean {
+  return /^draft: true$/m.test(frontmatterOf(noteContent.replace(/\r\n/g, "\n")));
+}
+
+function urlKey(url: string): string {
+  return url.trim().replace(/^https?:\/\/(www\.)?/i, "").replace(/\/+$/, "").toLowerCase();
+}
+
+/**
+ * Whether an existing note file may be overwritten by a save for
+ * `sourceUrl`: only a draft, and only one whose first source is that same
+ * page. A published note, or a draft of another page that happens to share
+ * the slug, still raises the slug conflict.
+ */
+export function isReplaceableDraft(existingContent: string, sourceUrl: string): boolean {
+  const fm = frontmatterOf(existingContent.replace(/\r\n/g, "\n"));
+  if (!/^draft: true$/m.test(fm)) return false;
+  const first = fm.match(/^\s+url:\s*"([^"]+)"/m);
+  return !!first && urlKey(first[1]) === urlKey(sourceUrl);
+}
+
 export interface RenderedOperation {
   clippingContent: string;
   clippingRelPath: string;

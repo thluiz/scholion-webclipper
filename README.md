@@ -497,6 +497,32 @@ project rule that a raw clipping is extraction, not composed prose, and
 doesn't go through ghost-writer/ghost-audit at all. Only the note's marker
 needs writing; the clipping file never needs one, in either `save` mode.
 
+## Decision 11 — a red note is saved as an unpublished draft, never left to expire
+
+Until 2026-11-17 a red verdict meant nothing reached the vault: the capture
+and the composed note lived only in the pending operation, which the sweep
+deletes after `OPERATION_TTL_HOURS` (24h). A page that went offline in that
+window was lost for good, and the Toscanini flow parked red pipelines for
+days.
+
+`save` now accepts `draft: true`. For any caller with `webclip.save` it
+writes the clipping and the note with two extra frontmatter lines right
+after `category: webclip` — `draft: true` (Hugo builds without `-D`, so the
+note is not published) and `audit_verdict: "red"`. This is the only change
+allowed between audit and write (Decision 8 still holds for everything
+published: the body is byte-identical, and a published note is never
+altered). Publishing a red note still takes `webclip.save.force` (Decision
+3): a draft is a holding place, not a way around the gate.
+
+A draft save does **not** consume the operation, so the author can still
+force-save it while it lives. A later save of the same page — a recompose
+that came back green/yellow, or a forced save — **replaces** the draft
+instead of raising `slug_conflict`, but only when the existing file is a
+draft whose first source URL is that same page. A published note, or a
+draft of a different page sharing the slug, still conflicts. Callers that
+recompose should pass the draft's `slug` to `compose` so the replacement
+lands on the same path.
+
 ## Deployment
 
 **Live** on HermesTools since 2026-09-24: `/home/hermes/services/scholion-webclipper`,

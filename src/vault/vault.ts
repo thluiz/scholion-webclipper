@@ -11,7 +11,7 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import type { RenderedOperation } from "../webclip/render";
+import { isReplaceableDraft, type RenderedOperation } from "../webclip/render";
 
 export class SlugExistsError extends Error {
   readonly status = 409;
@@ -172,14 +172,25 @@ export class Vault {
   }
 
   /**
+   * A note path is writable when it's free, or when it holds a draft of the
+   * same source page (`sourceUrl`): a red note saved as a draft is replaced
+   * by the next save of that page — a recompose, or the author's forced save.
+   */
+  async canWriteNote(relPath: string, sourceUrl?: string): Promise<boolean> {
+    const file = Bun.file(join(this.root, relPath));
+    if (!(await file.exists())) return true;
+    return !!sourceUrl && isReplaceableDraft(await file.text(), sourceUrl);
+  }
+
+  /**
    * Write the clipping and the note, one commit covering both — see README
    * "What save writes". Refuses if the note path already exists (a slug
    * conflict): checked inside the queue, so two concurrent saves for the
    * same slug can't race past each other.
    */
-  async save(rendered: RenderedOperation, message: string): Promise<CommitResult> {
+  async save(rendered: RenderedOperation, message: string, sourceUrl?: string): Promise<CommitResult> {
     return this.queue.run(async () => {
-      if (await this.noteExists(rendered.noteRelPath)) {
+      if (!(await this.canWriteNote(rendered.noteRelPath, sourceUrl))) {
         throw new SlugExistsError(`${rendered.noteRelPath} already exists`);
       }
 
